@@ -1,7 +1,11 @@
 # compiled output
 /dist
 /node_modules
+<<<<<<< HEAD
 .env
+=======
+
+>>>>>>> Initial commit of crypto-currency app
 # Logs
 logs
 *.log

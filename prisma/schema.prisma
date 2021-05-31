@@ -1,0 +1,58 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id          Int          @id @default(autoincrement())
+  username    String       @unique
+  portfolio   Portfolio?  
+  deleted   Boolean        @default(false)
+}
+
+model Portfolio {
+  id          Int          @id @default(autoincrement())
+  investments Investment[]
+  date        DateTime     @default(now())
+  user        User         @relation(fields: [userId], references: [id])
+  userId      Int
+  value       Float
+  deleted   Boolean        @default(false)
+  portfolioValue   PortfolioValue[]  
+}
+
+model PortfolioValue{
+  id          Int          @id @default(autoincrement())
+  value       Float
+  date        DateTime     @default(now())
+  portfolio   Portfolio    @relation(fields: [portfolioId], references: [id])
+  portfolioId Int
+  deleted   Boolean        @default(false)
+}
+
+model InvestmentValue{
+  id          Int          @id @default(autoincrement())
+  value       Float
+  date        DateTime     @default(now())
+  investment   Investment  @relation(fields: [investmentId], references: [id])
+  investmentId Int
+  deleted   Boolean        @default(false)
+}
+
+model Investment {
+  id          Int          @id @default(autoincrement())
+  name        String
+  date        DateTime     @default(now())
+  shortName   String
+  unitPrice   Float
+  amount      Float
+  value       Float
+  portfolio   Portfolio    @relation(fields: [portfolioId], references: [id])
+  portfolioId Int
+  deleted   Boolean        @default(false)
+  investmentValue InvestmentValue[]
+}
