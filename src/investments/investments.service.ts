@@ -8,6 +8,7 @@ import { PrismaService } from 'src/prisma.service';
 import { PortfolioService } from 'src/portfolio/portfolio.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InvestmentGroupService } from 'src/investment-group/investment-group.service';
+import { CustomError } from 'src/custom-error/CustomError';
 const fetch = require('node-fetch');
 
 @Injectable()
@@ -79,7 +80,7 @@ export class InvestmentsService {
         },
       });
       if (!investment) {
-        throw new NotFoundException('Investment not found');
+        throw new CustomError('Investment not found', 'NotFound');
       }
       return investment;
     } catch (error) {
@@ -99,8 +100,7 @@ export class InvestmentsService {
           inv.value = item.quote.USD.price * inv.amount;
         }
       });
-      if (!inv.shortName)
-        throw new BadRequestException('Crypto currency name not valid');
+      if (!inv.shortName) throw new CustomError('Name not valid', 'NotValid');
 
       const foundGroup = await this.invGroupService.findForNewInvestment(inv);
       let group;
@@ -147,6 +147,12 @@ export class InvestmentsService {
 
   async delete(id: number) {
     try {
+      const found = await this.prismaService.investment.findFirst({
+        where: { id: id * 1 },
+      });
+      if (!found) throw new CustomError('Investment not found', 'NotFound');
+      if (found.deleted)
+        throw new CustomError('Already deleted', 'InvestmentConflict');
       await this.prismaService.investmentValue.updateMany({
         where: {
           investmentId: id * 1,

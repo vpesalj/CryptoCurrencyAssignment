@@ -1,10 +1,14 @@
 import {
+  BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
   HttpException,
   HttpStatus,
+  InternalServerErrorException,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Post,
@@ -27,7 +31,7 @@ export class InvestmentsController {
     try {
       return await this.investmentService.getAllForPortfolio(Number(id));
     } catch (error) {
-      throw new HttpException('Something went wrong..', 500);
+      throw new InternalServerErrorException(error);
     }
   }
 
@@ -42,7 +46,11 @@ export class InvestmentsController {
     try {
       return await this.investmentService.getOne(Number(id));
     } catch (error) {
-      throw new HttpException('Something went wrong..', 500);
+      if (error.name === 'NotFound') {
+        throw new NotFoundException(error.message);
+      } else {
+        throw new InternalServerErrorException(error);
+      }
     }
   }
 
@@ -54,7 +62,13 @@ export class InvestmentsController {
       }
       return await this.investmentService.create(investment);
     } catch (error) {
-      throw new HttpException('Something went wrong..', 500);
+      if (error.name === 'NotValid') {
+        throw new BadRequestException(error.message);
+      } else if (error.name === 'NotFound') {
+        throw new NotFoundException(error.message);
+      } else {
+        throw new InternalServerErrorException(error);
+      }
     }
   }
 
@@ -69,7 +83,13 @@ export class InvestmentsController {
     try {
       return await this.investmentService.delete(Number(id));
     } catch (error) {
-      throw new HttpException('Something went wrong..', 500);
+      if (error.name === 'InvestmentConflict') {
+        throw new ConflictException(error.message);
+      } else if (error.name === 'NotFound') {
+        throw new NotFoundException(error.message);
+      } else {
+        throw new InternalServerErrorException(error);
+      }
     }
   }
 }

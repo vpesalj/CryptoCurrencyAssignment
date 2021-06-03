@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { CustomError } from 'src/custom-error/CustomError';
 import { PrismaService } from 'src/prisma.service';
 
 @Injectable()
@@ -54,7 +55,7 @@ export class InvestmentGroupService {
       const foundGroup = await this.prismaService.investmentGroup.findUnique({
         where: { id: invGroup.id * 1 },
       });
-      if (!foundGroup) throw new NotFoundException('Group not found');
+      if (!foundGroup) throw new CustomError('Group not found', 'NotFound');
 
       await this.prismaService.investmentGroup.update({
         where: {

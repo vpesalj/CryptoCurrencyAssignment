@@ -1,11 +1,14 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
   HttpException,
   HttpStatus,
+  InternalServerErrorException,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Post,
@@ -24,8 +27,7 @@ export class UsersController {
     try {
       return await this.userService.getAll();
     } catch (error) {
-      // throw new HttpException(error, 500);
-      throw new HttpException('Something went wrong..', 500);
+      throw new InternalServerErrorException(error);
     }
   }
 
@@ -40,8 +42,11 @@ export class UsersController {
     try {
       return await this.userService.getOne(id);
     } catch (error) {
-      // throw new HttpException(error, 500);
-      throw new HttpException('Something went wrong..', 500);
+      if (error.name === 'NotFound') {
+        throw new NotFoundException(error.message);
+      } else {
+        throw new InternalServerErrorException(error);
+      }
     }
   }
 
@@ -51,8 +56,11 @@ export class UsersController {
       if (!username) throw new BadRequestException('Username is empty');
       return await this.userService.create(username);
     } catch (error) {
-      // throw new HttpException(error, 500);
-      throw new HttpException('Something went wrong..', 500);
+      if (error.name === 'UserConflict') {
+        throw new ConflictException(error.message);
+      } else {
+        throw new InternalServerErrorException(error);
+      }
     }
   }
 
@@ -72,8 +80,13 @@ export class UsersController {
     try {
       return await this.userService.delete(Number(id), Number(portfolioId));
     } catch (error) {
-      // throw new HttpException(error, 500);
-      throw new HttpException('Something went wrong..', 500);
+      if (error.name === 'UserConflict') {
+        throw new ConflictException(error.message);
+      } else if (error.name === 'NotFound') {
+        throw new NotFoundException(error.message);
+      } else {
+        throw new InternalServerErrorException(error);
+      }
     }
   }
 }

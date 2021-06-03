@@ -1,11 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { PortfolioService } from '../portfolio/portfolio.service';
+import { CustomError } from '../custom-error/CustomError';
 const fetch = require('node-fetch');
 
 @Injectable()
@@ -93,7 +90,7 @@ export class UsersService {
         },
       });
       if (!user) {
-        throw new NotFoundException('User not found...');
+        throw new CustomError('User not found', 'NotFound');
       }
       return user;
     } catch (error) {
@@ -103,15 +100,13 @@ export class UsersService {
 
   async create(username_: string) {
     try {
-      const found = await this.prismaService.user.findUnique({
+      const found = await this.prismaService.user.findFirst({
         where: {
           username: username_,
+          deleted: false,
         },
       });
-      if (found)
-        return new BadRequestException(
-          'User with this username already exists',
-        );
+      if (found) throw new CustomError('User already exists', 'UserConflict');
       return await this.prismaService.user.create({
         data: {
           username: username_,
@@ -136,11 +131,14 @@ export class UsersService {
     try {
       const found = await this.prismaService.user.findUnique({
         where: {
-          id: id,
+          id: id * 1,
         },
       });
-      if (!found) throw new NotFoundException("User doesn't exist");
-      if (found.deleted) throw new NotFoundException('User is deleted');
+      if (!found) throw new CustomError('User not found', 'NotFound');
+
+      if (found.deleted)
+        throw new CustomError('User already deleted', 'UserConflict');
+
       await this.portfolioService.delete(portfolioId);
       await this.prismaService.user.update({
         where: {

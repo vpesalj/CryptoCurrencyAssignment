@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { CustomError } from 'src/custom-error/CustomError';
 import { InvestmentGroupService } from 'src/investment-group/investment-group.service';
 import { PrismaService } from 'src/prisma.service';
 
@@ -80,7 +81,7 @@ export class PortfolioService {
           portfolioValue: true,
         },
       });
-      if (!portfolio) throw new NotFoundException('Portfolio not found...');
+      if (!portfolio) throw new CustomError('Portfolio not found', 'NotFound');
       return portfolio;
     } catch (error) {
       throw error;

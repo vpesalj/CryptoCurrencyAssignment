@@ -9,7 +9,7 @@ generator client {
 
 model User {
   id          Int          @id @default(autoincrement())
-  username    String       @unique
+  username    String       
   portfolio   Portfolio?  
   deleted   Boolean        @default(false)
 }
