@@ -16,7 +16,7 @@ model User {
 
 model Portfolio {
   id          Int          @id @default(autoincrement())
-  investments Investment[]
+  investmentGroups InvestmentGroup[]
   date        DateTime     @default(now())
   user        User         @relation(fields: [userId], references: [id])
   userId      Int
@@ -43,6 +43,17 @@ model InvestmentValue{
   deleted   Boolean        @default(false)
 }
 
+model InvestmentGroup{
+  id          Int          @id @default(autoincrement())
+  value       Float
+  name        String
+  date        DateTime     @default(now())
+  investments   Investment[]
+  deleted   Boolean        @default(false)
+  portfolio   Portfolio    @relation(fields: [portfolioId], references: [id])
+  portfolioId Int
+}
+
 model Investment {
   id          Int          @id @default(autoincrement())
   name        String
@@ -51,8 +62,8 @@ model Investment {
   unitPrice   Float
   amount      Float
   value       Float
-  portfolio   Portfolio    @relation(fields: [portfolioId], references: [id])
-  portfolioId Int
+  investmentGroup   InvestmentGroup    @relation(fields: [investmentGroupId], references: [id])
+  investmentGroupId Int
   deleted   Boolean        @default(false)
   investmentValue InvestmentValue[]
 }

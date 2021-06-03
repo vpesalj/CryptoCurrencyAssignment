@@ -1,8 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Investment } from 'src/dto/investment.dto';
 import { PrismaService } from 'src/prisma.service';
 import { PortfolioService } from 'src/portfolio/portfolio.service';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { InvestmentGroupService } from 'src/investment-group/investment-group.service';
 const fetch = require('node-fetch');
 
 @Injectable()
@@ -10,24 +15,8 @@ export class InvestmentsService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly portfolioService: PortfolioService,
+    private readonly invGroupService: InvestmentGroupService,
   ) {}
-
-  async getAllForPortfolio(id: number) {
-    try {
-      const investments = await this.prismaService.investment.findMany({
-        where: {
-          portfolioId: id,
-        },
-        include: {
-          investmentValue: true,
-          portfolio: true,
-        },
-      });
-      return investments;
-    } catch (error) {
-      throw error;
-    }
-  }
 
   async getAll() {
     try {
@@ -36,7 +25,42 @@ export class InvestmentsService {
           deleted: false,
         },
       });
-      if (!investments) throw new Error('Investments not found');
+      return investments;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getAllForPortfolio(id: number) {
+    try {
+      const investments = await this.prismaService.investmentGroup.findMany({
+        where: {
+          deleted: false,
+          portfolioId: id,
+        },
+        include: {
+          portfolio: {
+            select: {
+              id: true,
+              date: true,
+              value: true,
+              portfolioValue: true,
+            },
+          },
+          investments: {
+            select: {
+              id: true,
+              date: true,
+              name: true,
+              shortName: true,
+              amount: true,
+              unitPrice: true,
+              value: true,
+              investmentValue: true,
+            },
+          },
+        },
+      });
       return investments;
     } catch (error) {
       throw error;
@@ -45,16 +69,17 @@ export class InvestmentsService {
 
   async getOne(id: number) {
     try {
-      const investment = await this.prismaService.investment.findUnique({
+      const investment = await this.prismaService.investment.findFirst({
         where: {
           id: id * 1,
+          deleted: false,
         },
         include: {
           investmentValue: true,
         },
       });
       if (!investment) {
-        throw new Error('Investment not found...');
+        throw new NotFoundException('Investment not found');
       }
       return investment;
     } catch (error) {
@@ -65,42 +90,56 @@ export class InvestmentsService {
   async create(inv: Investment) {
     try {
       const portfolio = await this.portfolioService.getOne(inv.portfolio.id);
-      if (!portfolio) return 'Portfolio not found';
-      const data = await this.getCryptoCurrencyData();
+      const newData = await this.getCryptoCurrencyData();
 
-      data.filter((item) => {
+      newData.filter((item) => {
         if (item.name === inv.name) {
-          (inv.shortName = item.symbol), (inv.unitPrice = item.quote.USD.price);
+          inv.shortName = item.symbol;
+          inv.unitPrice = item.quote.USD.price;
+          inv.value = item.quote.USD.price * inv.amount;
         }
       });
-      if (!inv.shortName) throw Error('Name not valid');
-      const invValue = inv.unitPrice * inv.amount;
+      if (!inv.shortName)
+        throw new BadRequestException('Crypto currency name not valid');
 
-      const created = await this.prismaService.investment.create({
+      const foundGroup = await this.invGroupService.findForNewInvestment(inv);
+      let group;
+      if (foundGroup) {
+        group = {
+          connect: {
+            id: foundGroup.id,
+          },
+        };
+      } else {
+        group = {
+          create: {
+            name: inv.name,
+            value: inv.unitPrice * inv.amount,
+            portfolioId: inv.portfolio.id * 1,
+          },
+        };
+      }
+      const createdInvestment = await this.prismaService.investment.create({
         data: {
           name: inv.name,
           shortName: inv.shortName,
           amount: Number(inv.amount),
           value: inv.unitPrice * inv.amount,
           unitPrice: inv.unitPrice,
+          investmentGroup: group,
           investmentValue: {
             create: {
-              value: invValue,
-            },
-          },
-          portfolio: {
-            connect: {
-              id: Number(inv.portfolio.id),
+              value: inv.value,
             },
           },
         },
       });
-
-      await this.portfolioService.updateAfterNewInvestment(
-        inv.portfolio.id,
-        invValue,
+      await this.invGroupService.updateAfterNewInvestment(
+        foundGroup,
+        inv.value,
+        portfolio,
       );
-      return created;
+      return createdInvestment;
     } catch (error) {
       throw error;
     }
@@ -108,88 +147,68 @@ export class InvestmentsService {
 
   async delete(id: number) {
     try {
-      return this.prismaService.investment.delete({
+      await this.prismaService.investmentValue.updateMany({
+        where: {
+          investmentId: id * 1,
+        },
+        data: {
+          deleted: true,
+        },
+      });
+      await this.prismaService.investment.update({
         where: {
           id: id * 1,
         },
+        data: {
+          deleted: true,
+        },
       });
+      return 'Deleted';
     } catch (error) {
+      console.log(error);
       throw error;
     }
   }
 
-  @Cron('45 * * * * *')
+  @Cron(CronExpression.EVERY_10_MINUTES)
   async updateScheduler() {
-    const newData = await this.getCryptoCurrencyData();
-    const investments = await this.getAll();
-    const portfolios = await this.portfolioService.getAll();
-    this.updateInvestmentScheduler(newData, investments);
-    this.updatePortfolioValueScheduler(portfolios);
+    try {
+      const newData = await this.getCryptoCurrencyData();
+      const investments = await this.getAll();
+      this.investmentScheduler(newData, investments);
+      const portfolios = await this.portfolioService.getAll();
+      this.portfolioService.portfolioScheduler(portfolios);
+    } catch (err) {
+      throw err;
+    }
   }
 
-  async updateInvestmentScheduler(newCryptoData: any[], investments: any[]) {
+  async investmentScheduler(newCryptoData: any[], investments: any[]) {
     newCryptoData.filter((item) => {
-      investments.filter((inv) => {
-        if (item.name === inv.name) {
-          inv.unitPrice = item.quote.USD.price;
-          inv.value = item.quote.USD.price * inv.amount;
+      investments.filter((investment) => {
+        if (item.name === investment.name) {
+          investment.unitPrice = item.quote.USD.price;
+          investment.value = item.quote.USD.price * investment.amount;
           this.prismaService.investment
             .update({
               where: {
-                id: inv.id,
+                id: investment.id,
               },
               data: {
-                unitPrice: inv.unitPrice,
-                value: inv.value,
-                date: new Date(),
+                unitPrice: investment.unitPrice,
+                value: investment.value,
                 investmentValue: {
                   create: {
-                    value: inv.value,
-                    deleted: false,
+                    value: investment.value,
                   },
                 },
               },
-            })
-            .then((res) => {
-              console.log(res);
             })
             .catch((err) => {
               throw err;
             });
         }
       });
-    });
-  }
-
-  async updatePortfolioValueScheduler(portfolios: any[]) {
-    portfolios.map((item) => {
-      const totalValue = item.investments.reduce(
-        (acc, current) => acc + current.value,
-        0,
-      );
-
-      this.prismaService.portfolio
-        .update({
-          where: {
-            id: item.id,
-          },
-          data: {
-            value: totalValue,
-            date: new Date(),
-            portfolioValue: {
-              create: {
-                deleted: false,
-                value: totalValue,
-              },
-            },
-          },
-        })
-        .then((res) => {
-          console.log(res);
-        })
-        .catch((err) => {
-          throw err;
-        });
     });
   }
 

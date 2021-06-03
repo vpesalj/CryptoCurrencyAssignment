@@ -10,6 +10,7 @@ import { InvestmentsService } from './investments/investments.service';
 import { InvestmentsModule } from './investments/investments.module';
 import { PortfolioService } from './portfolio/portfolio.service';
 import { PortfolioModule } from './portfolio/portfolio.module';
+import { InvestmentGroupService } from './investment-group/investment-group.service';
 
 @Module({
   imports: [UsersModule, InvestmentsModule, PortfolioModule],
@@ -20,6 +21,7 @@ import { PortfolioModule } from './portfolio/portfolio.module';
     PrismaService,
     InvestmentsService,
     PortfolioService,
+    InvestmentGroupService,
   ],
 })
 export class AppModule {}

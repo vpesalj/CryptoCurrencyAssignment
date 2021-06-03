@@ -2,10 +2,14 @@
 /dist
 /node_modules
 <<<<<<< HEAD
+<<<<<<< HEAD
 .env
 =======
 
 >>>>>>> Initial commit of crypto-currency app
+=======
+.env
+>>>>>>> Updated with investment groups and added exception filter
 # Logs
 logs
 *.log

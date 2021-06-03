@@ -1,5 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { PortfolioService } from '../portfolio/portfolio.service';
 const fetch = require('node-fetch');
@@ -13,7 +17,7 @@ export class UsersService {
 
   async getAll() {
     try {
-      const users = await this.prismaService.user.findMany({
+      return await this.prismaService.user.findMany({
         where: {
           deleted: false,
         },
@@ -23,41 +27,30 @@ export class UsersService {
               id: true,
               date: true,
               value: true,
-              investments: {
+              portfolioValue: true,
+              investmentGroups: {
                 select: {
                   id: true,
                   date: true,
-                  amount: true,
                   value: true,
-                  deleted: true,
-                  shortName: true,
-                  name: true,
-                  investmentValue: {
+                  investments: {
                     select: {
                       id: true,
-                      value: true,
                       date: true,
-                      deleted: true,
+                      name: true,
+                      shortName: true,
+                      amount: true,
+                      unitPrice: true,
+                      value: true,
+                      investmentValue: true,
                     },
                   },
-                },
-              },
-              portfolioValue: {
-                select: {
-                  id: true,
-                  date: true,
-                  value: true,
-                  deleted: true,
                 },
               },
             },
           },
         },
       });
-      if (!users) {
-        throw new Error('Users not found');
-      }
-      return users;
     } catch (error) {
       throw error;
     }
@@ -75,25 +68,32 @@ export class UsersService {
               id: true,
               date: true,
               value: true,
-              investments: {
+              portfolioValue: true,
+              investmentGroups: {
                 select: {
                   id: true,
                   date: true,
-                  name: true,
-                  shortName: true,
-                  amount: true,
-                  unitPrice: true,
                   value: true,
-                  investmentValue: true,
+                  investments: {
+                    select: {
+                      id: true,
+                      date: true,
+                      name: true,
+                      shortName: true,
+                      amount: true,
+                      unitPrice: true,
+                      value: true,
+                      investmentValue: true,
+                    },
+                  },
                 },
               },
-              portfolioValue: true,
             },
           },
         },
       });
       if (!user) {
-        throw new Error('User not found...');
+        throw new NotFoundException('User not found...');
       }
       return user;
     } catch (error) {
@@ -103,7 +103,16 @@ export class UsersService {
 
   async create(username_: string) {
     try {
-      const createUser = await this.prismaService.user.create({
+      const found = await this.prismaService.user.findUnique({
+        where: {
+          username: username_,
+        },
+      });
+      if (found)
+        return new BadRequestException(
+          'User with this username already exists',
+        );
+      return await this.prismaService.user.create({
         data: {
           username: username_,
           portfolio: {
@@ -118,7 +127,6 @@ export class UsersService {
           },
         },
       });
-      return createUser;
     } catch (error) {
       throw error;
     }
@@ -126,6 +134,13 @@ export class UsersService {
 
   async delete(id: number, portfolioId: number) {
     try {
+      const found = await this.prismaService.user.findUnique({
+        where: {
+          id: id,
+        },
+      });
+      if (!found) throw new NotFoundException("User doesn't exist");
+      if (found.deleted) throw new NotFoundException('User is deleted');
       await this.portfolioService.delete(portfolioId);
       await this.prismaService.user.update({
         where: {
@@ -135,6 +150,7 @@ export class UsersService {
           deleted: true,
         },
       });
+      return 'Deleted';
     } catch (error) {
       throw error;
     }

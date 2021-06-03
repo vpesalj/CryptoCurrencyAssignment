@@ -1,9 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InvestmentGroupService } from 'src/investment-group/investment-group.service';
 import { PrismaService } from 'src/prisma.service';
 
 @Injectable()
 export class PortfolioService {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly invGroupService: InvestmentGroupService,
+  ) {}
 
   async getAll() {
     try {
@@ -12,12 +16,19 @@ export class PortfolioService {
           deleted: false,
         },
         include: {
-          investments: true,
+          investmentGroups: {
+            select: {
+              id: true,
+              name: true,
+              portfolio: true,
+              investments: true,
+              value: true,
+            },
+          },
           portfolioValue: true,
           user: true,
         },
       });
-      if (!portfolios) throw new Error('Portfolios not found');
       return portfolios;
     } catch (error) {
       throw error;
@@ -34,7 +45,6 @@ export class PortfolioService {
           portfolio: true,
         },
       });
-      if (!values) throw new Error('Portfolio values not found');
       return values;
     } catch (error) {
       throw error;
@@ -48,23 +58,29 @@ export class PortfolioService {
           id: id * 1,
         },
         include: {
-          investments: {
+          investmentGroups: {
             select: {
               id: true,
-              date: true,
               name: true,
-              shortName: true,
-              amount: true,
+              date: true,
               value: true,
-              investmentValue: true,
+              investments: {
+                select: {
+                  id: true,
+                  date: true,
+                  name: true,
+                  shortName: true,
+                  amount: true,
+                  value: true,
+                  investmentValue: true,
+                },
+              },
             },
           },
           portfolioValue: true,
         },
       });
-      if (!portfolio) {
-        throw new Error('Portfolio not found...');
-      }
+      if (!portfolio) throw new NotFoundException('Portfolio not found...');
       return portfolio;
     } catch (error) {
       throw error;
@@ -79,7 +95,7 @@ export class PortfolioService {
         },
         data: {
           deleted: true,
-          investments: {
+          investmentGroups: {
             updateMany: {
               where: {
                 portfolioId: id,
@@ -91,31 +107,24 @@ export class PortfolioService {
           },
         },
       });
+      return 'Deleted';
     } catch (error) {
       throw error;
     }
   }
 
-  async updateAfterNewInvestment(id: number, newValue: number) {
+  async updateForScheduler(portfolio: any, portfolioValue: number) {
     try {
-      const portfolio = await this.prismaService.portfolio.findUnique({
-        where: {
-          id: id * 1,
-        },
-      });
-      if (!portfolio) {
-        throw new Error('Portfolio not found...');
-      }
-      await this.prismaService.portfolio.update({
+      return await this.prismaService.portfolio.update({
         where: {
           id: portfolio.id,
         },
         data: {
-          value: portfolio.value + newValue,
+          value: portfolioValue,
           date: new Date(),
           portfolioValue: {
             create: {
-              value: portfolio.value + newValue,
+              value: portfolioValue,
             },
           },
         },
@@ -123,5 +132,30 @@ export class PortfolioService {
     } catch (error) {
       throw error;
     }
+  }
+
+  async portfolioScheduler(portfolios: any[]) {
+    portfolios.map((portfolio) => {
+      let portfolioValue = 0;
+      portfolio.investmentGroups.map((invGroup) => {
+        const invGroupValue = invGroup.investments.reduce(
+          (acc, current) => acc + current.value,
+          0,
+        );
+        this.invGroupService
+          .updateForScheduler(invGroup, invGroupValue)
+          .then((res) => res)
+          .catch((error) => {
+            throw error;
+          });
+
+        portfolioValue += invGroupValue;
+      });
+      this.updateForScheduler(portfolio, portfolioValue)
+        .then((res) => res)
+        .catch((err) => {
+          throw err;
+        });
+    });
   }
 }
